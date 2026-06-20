@@ -1,0 +1,2017 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>AWS Traffic Builder</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --ink: #172033;
+      --muted: #64748b;
+      --line: #243044;
+      --panel: rgba(255, 255, 255, 0.92);
+      --edge: #334155;
+      --danger: #ef4444;
+      --ok: #10b981;
+      --warn: #f59e0b;
+      --blue: #3b82f6;
+      --green: #22c55e;
+      --red: #ef4444;
+      --purple: #a855f7;
+      --yellow: #eab308;
+      font-family: ui-rounded, "SF Pro Rounded", "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: none;
+      user-select: none;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--ink);
+    }
+
+    #app {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      background:
+        linear-gradient(rgba(15, 23, 42, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(15, 23, 42, 0.045) 1px, transparent 1px),
+        var(--bg);
+      background-size: 30px 30px;
+    }
+
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .hud {
+      position: absolute;
+      z-index: 4;
+      pointer-events: none;
+    }
+
+    .revenue {
+      top: max(10px, env(safe-area-inset-top));
+      left: 50%;
+      min-width: 142px;
+      transform: translateX(-50%);
+      padding: 7px 12px 8px;
+      border: 2px solid var(--ink);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.10);
+      text-align: center;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .revenue .value {
+      display: block;
+      font-size: clamp(20px, 7vw, 30px);
+      letter-spacing: 0;
+    }
+
+    .revenue .sub {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .quota {
+      top: max(10px, env(safe-area-inset-top));
+      right: max(10px, env(safe-area-inset-right));
+      display: grid;
+      grid-template-columns: auto auto;
+      gap: 4px 8px;
+      align-items: center;
+      padding: 7px 9px;
+      border: 2px solid var(--ink);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.10);
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.05;
+    }
+
+    .quota span:nth-child(odd) {
+      color: var(--muted);
+      font-weight: 900;
+    }
+
+    .palette-toggle {
+      position: absolute;
+      z-index: 5;
+      right: max(14px, env(safe-area-inset-right));
+      bottom: max(14px, env(safe-area-inset-bottom));
+      width: 62px;
+      height: 62px;
+      display: grid;
+      place-items: center;
+      border: 2px solid var(--ink);
+      border-radius: 50%;
+      background: #ffffff;
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
+      color: var(--ink);
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .palette-toggle svg {
+      width: 30px;
+      height: 30px;
+      stroke: currentColor;
+      stroke-width: 2.4;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .palette {
+      position: absolute;
+      z-index: 6;
+      right: max(12px, env(safe-area-inset-right));
+      bottom: calc(max(84px, env(safe-area-inset-bottom) + 84px));
+      display: grid;
+      gap: 8px;
+      padding: 8px;
+      border: 2px solid var(--ink);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 14px 34px rgba(15, 23, 42, 0.16);
+      transform-origin: right bottom;
+      transition: transform 140ms ease, opacity 140ms ease;
+    }
+
+    .palette.closed {
+      transform: scale(0.82) translate(6px, 12px);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .tool {
+      width: 54px;
+      height: 54px;
+      display: grid;
+      place-items: center;
+      position: relative;
+      border: 2px solid var(--ink);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      cursor: grab;
+    }
+
+    .tool:active {
+      cursor: grabbing;
+    }
+
+    .tool svg {
+      width: 31px;
+      height: 31px;
+      stroke: currentColor;
+      stroke-width: 2.35;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .tool[data-core="process"] {
+      color: #2563eb;
+    }
+
+    .tool[data-core="split"] {
+      color: #0891b2;
+    }
+
+    .tool[data-core="buffer"] {
+      color: #d97706;
+    }
+
+    .tool[data-core="store"] {
+      color: #7c3aed;
+    }
+
+    .tool .label {
+      position: absolute;
+      right: 62px;
+      top: 50%;
+      width: max-content;
+      max-width: 150px;
+      transform: translateY(-50%) scale(0.96);
+      transform-origin: right center;
+      opacity: 0;
+      padding: 6px 9px;
+      border: 2px solid var(--ink);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+      font-size: 13px;
+      font-weight: 900;
+      white-space: nowrap;
+      transition: opacity 120ms ease, transform 120ms ease;
+      pointer-events: none;
+    }
+
+    .tool.show-label .label,
+    .tool:focus-visible .label {
+      opacity: 1;
+      transform: translateY(-50%) scale(1);
+    }
+
+    .drag-ghost {
+      position: absolute;
+      z-index: 20;
+      width: 58px;
+      height: 58px;
+      display: none;
+      place-items: center;
+      border: 2px solid var(--ink);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.86);
+      box-shadow: 0 12px 26px rgba(15, 23, 42, 0.18);
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      backdrop-filter: blur(8px);
+    }
+
+    .drag-ghost.visible {
+      display: grid;
+    }
+
+    .drag-ghost svg {
+      width: 34px;
+      height: 34px;
+      stroke: currentColor;
+      stroke-width: 2.35;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .toast {
+      left: 50%;
+      bottom: max(22px, env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      max-width: min(82vw, 360px);
+      padding: 8px 12px;
+      border: 2px solid var(--ink);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow: 0 10px 26px rgba(15, 23, 42, 0.14);
+      font-size: 13px;
+      font-weight: 800;
+      text-align: center;
+      opacity: 0;
+      transition: opacity 150ms ease, transform 150ms ease;
+    }
+
+    .toast.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(-78px);
+    }
+
+    .overlay {
+      position: absolute;
+      z-index: 30;
+      inset: 0;
+      display: none;
+      place-items: center;
+      padding: 18px;
+      background: rgba(248, 250, 252, 0.72);
+      backdrop-filter: blur(5px);
+    }
+
+    .overlay.visible {
+      display: grid;
+    }
+
+    .result {
+      width: min(340px, 88vw);
+      padding: 18px;
+      border: 2px solid var(--ink);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
+      text-align: center;
+    }
+
+    .screen-rail {
+      height: 42px;
+      display: grid;
+      grid-template-columns: auto 1fr 16px 1fr 16px;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 12px;
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .screen-rail span {
+      padding: 6px 8px;
+      border: 2px solid var(--ink);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .screen-rail i {
+      height: 5px;
+      border-radius: 999px;
+      background: var(--edge);
+    }
+
+    .screen-rail b {
+      width: 16px;
+      height: 16px;
+      border: 3px solid #2563eb;
+      border-radius: 50%;
+      background: #fff;
+    }
+
+    .screen-kicker {
+      margin: 0 0 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .result h1 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+
+    .result p {
+      margin: 10px 0 14px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.45;
+    }
+
+    .result-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 12px 0 14px;
+      text-align: left;
+    }
+
+    .result-stats[hidden] {
+      display: none;
+    }
+
+    .result-stats span,
+    .result-stats strong {
+      min-height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid rgba(23, 32, 51, 0.18);
+      border-radius: 8px;
+      background: #f8fafc;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .result-stats span {
+      color: var(--muted);
+    }
+
+    .result-actions {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    .result-actions.two {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .result button {
+      width: 100%;
+      height: 48px;
+      border: 2px solid var(--ink);
+      border-radius: 8px;
+      background: var(--ink);
+      color: #fff;
+      font: inherit;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .result button.secondary {
+      background: #fff;
+      color: var(--ink);
+    }
+
+    @media (max-height: 590px) {
+      .tool {
+        width: 48px;
+        height: 48px;
+      }
+
+      .tool svg {
+        width: 28px;
+        height: 28px;
+      }
+
+      .palette-toggle {
+        width: 56px;
+        height: 56px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <canvas id="game"></canvas>
+
+    <div class="hud revenue" aria-live="polite">
+      <span class="value" id="revenueText">売上 30</span>
+      <span class="sub"><span id="timerText">180s</span><span id="goalText">目標 100</span></span>
+    </div>
+
+    <div class="hud quota" aria-live="polite">
+      <span>C</span><strong id="compQuota">0/8</strong>
+      <span>NW</span><strong id="netQuota">0/12</strong>
+    </div>
+
+    <button class="palette-toggle" id="paletteToggle" aria-label="パレット">
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M8 9h16M8 16h16M8 23h16"></path>
+        <path d="M11 6v6M21 13v6M14 20v6"></path>
+      </svg>
+    </button>
+
+    <div class="palette" id="palette">
+      <button class="tool" data-kind="component" aria-label="コンポーネント">
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <rect x="8" y="8" width="16" height="16" rx="4"></rect>
+          <path d="M16 12v8M12 16h8"></path>
+        </svg>
+        <span class="label">コンポーネント</span>
+      </button>
+      <button class="tool" data-kind="core" data-core="process" aria-label="さばく">
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <rect x="10" y="10" width="12" height="12" rx="2"></rect>
+          <path d="M6 13h4M6 19h4M22 13h4M22 19h4M13 6v4M19 6v4M13 22v4M19 22v4"></path>
+        </svg>
+        <span class="label">さばく</span>
+      </button>
+      <button class="tool" data-kind="core" data-core="split" aria-label="わける">
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M7 16h8"></path>
+          <path d="M15 16c5 0 5-7 10-7"></path>
+          <path d="M15 16c5 0 5 7 10 7"></path>
+          <path d="M22 6l4 3-4 3M22 20l4 3-4 3"></path>
+        </svg>
+        <span class="label">わける</span>
+      </button>
+      <button class="tool" data-kind="core" data-core="buffer" aria-label="ためる">
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M8 11c0-2 4-4 8-4s8 2 8 4-4 4-8 4-8-2-8-4Z"></path>
+          <path d="M8 11v10c0 2 4 4 8 4s8-2 8-4V11"></path>
+          <path d="M8 16c0 2 4 4 8 4s8-2 8-4"></path>
+        </svg>
+        <span class="label">ためる</span>
+      </button>
+      <button class="tool" data-kind="core" data-core="store" aria-label="おぼえる">
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M9 8h14v16H9z"></path>
+          <path d="M13 8v16M19 8v16M9 14h14M9 19h14"></path>
+        </svg>
+        <span class="label">おぼえる</span>
+      </button>
+    </div>
+
+    <div class="drag-ghost" id="dragGhost"></div>
+    <div class="hud toast" id="toast"></div>
+
+    <div class="overlay visible" id="overlay">
+      <div class="result">
+        <div class="screen-rail" aria-hidden="true">
+          <span>IGW</span><i></i><b></b><i></i><b></b>
+        </div>
+        <p class="screen-kicker" id="screenKicker">AWS Traffic Builder</p>
+        <h1 id="resultTitle">TRAFFIC OPS</h1>
+        <p id="resultText">180s / 売上100</p>
+        <div class="result-stats" id="resultStats" hidden>
+          <span>売上</span><strong id="statRevenue">30</strong>
+          <span>処理</span><strong id="statHandled">0</strong>
+          <span>ミス</span><strong id="statErrors">0</strong>
+          <span>残り</span><strong id="statTime">180s</strong>
+        </div>
+        <div class="result-actions">
+          <button id="restartButton">スタート</button>
+          <button class="secondary" id="titleButton" hidden>タイトル</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d");
+      const revenueText = document.getElementById("revenueText");
+      const timerText = document.getElementById("timerText");
+      const goalText = document.getElementById("goalText");
+      const compQuota = document.getElementById("compQuota");
+      const netQuota = document.getElementById("netQuota");
+      const palette = document.getElementById("palette");
+      const paletteToggle = document.getElementById("paletteToggle");
+      const dragGhost = document.getElementById("dragGhost");
+      const toast = document.getElementById("toast");
+      const overlay = document.getElementById("overlay");
+      const screenKicker = document.getElementById("screenKicker");
+      const resultTitle = document.getElementById("resultTitle");
+      const resultText = document.getElementById("resultText");
+      const resultStats = document.getElementById("resultStats");
+      const statRevenue = document.getElementById("statRevenue");
+      const statHandled = document.getElementById("statHandled");
+      const statErrors = document.getElementById("statErrors");
+      const statTime = document.getElementById("statTime");
+      const resultActions = document.querySelector(".result-actions");
+      const restartButton = document.getElementById("restartButton");
+      const titleButton = document.getElementById("titleButton");
+
+      const MAX_COMPONENTS = 8;
+      const MAX_NETWORKS = 12;
+      const INITIAL_REVENUE = 30;
+      const TARGET_REVENUE = 100;
+      const ROUND_SECONDS = 180;
+      const NODE_RADIUS = 30;
+      const IGW_ID = "igw";
+
+      const colors = {
+        ink: "#172033",
+        muted: "#64748b",
+        edge: "#334155",
+        panel: "#ffffff",
+        danger: "#ef4444",
+        ok: "#10b981",
+        warn: "#f59e0b",
+        blue: "#3b82f6",
+        green: "#22c55e",
+        red: "#ef4444",
+        purple: "#a855f7",
+        yellow: "#eab308",
+        cyan: "#06b6d4",
+        violet: "#8b5cf6"
+      };
+
+      const trafficTypes = [
+        { id: "normal", label: "通常", color: colors.blue, value: 1.4, weight: 42 },
+        { id: "dataLight", label: "軽DB", color: colors.green, value: 1.7, weight: 25 },
+        { id: "heavy", label: "重", color: colors.red, value: 2.7, weight: 14 },
+        { id: "dataHeavy", label: "重DB", color: colors.purple, value: 3.1, weight: 12 },
+        { id: "observe", label: "ログ", color: colors.yellow, value: 1.2, weight: 7 }
+      ];
+
+      const coreColors = {
+        process: "#2563eb",
+        split: "#0891b2",
+        buffer: "#d97706",
+        store: "#7c3aed"
+      };
+
+      const coreLabels = {
+        process: "さ",
+        split: "わ",
+        buffer: "た",
+        store: "お"
+      };
+
+      let dpr = 1;
+      let view = { w: 0, h: 0 };
+      let state;
+      let lastTime = performance.now();
+      let idSeq = 0;
+      let toastTimer = 0;
+      let activeDrag = null;
+      let pointerAction = null;
+
+      function resetState(status = "ready") {
+        idSeq = 0;
+        state = {
+          status,
+          revenue: INITIAL_REVENUE,
+          elapsed: 0,
+          spawnTimer: 2.1,
+          spawnInterval: 1.48,
+          components: [],
+          edges: [],
+          packets: [],
+          particles: [],
+          floaters: [],
+          selected: null,
+          igwRoundRobin: 0,
+          paletteOpen: status === "playing",
+          screenShake: 0,
+          stats: {
+            handled: 0,
+            errors: 0,
+            gain: 0,
+            loss: 0,
+            peakRevenue: INITIAL_REVENUE
+          }
+        };
+        palette.classList.toggle("closed", status !== "playing");
+        if (status === "ready") {
+          showStartScreen();
+        } else {
+          overlay.classList.remove("visible");
+          showToast("AWS Traffic Builder", 1200);
+        }
+        updateHud();
+      }
+
+      function showStartScreen() {
+        screenKicker.textContent = "AWS Traffic Builder";
+        resultTitle.textContent = "TRAFFIC OPS";
+        resultText.textContent = "180s / 売上100";
+        resultStats.hidden = true;
+        restartButton.textContent = "スタート";
+        titleButton.hidden = true;
+        resultActions.classList.remove("two");
+        overlay.classList.add("visible");
+      }
+
+      function startGame() {
+        resetState("playing");
+      }
+
+      function resize() {
+        dpr = Math.max(1, Math.min(2.4, window.devicePixelRatio || 1));
+        view.w = Math.floor(window.innerWidth);
+        view.h = Math.floor(window.innerHeight);
+        canvas.width = Math.floor(view.w * dpr);
+        canvas.height = Math.floor(view.h * dpr);
+        canvas.style.width = `${view.w}px`;
+        canvas.style.height = `${view.h}px`;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      function nextId(prefix) {
+        idSeq += 1;
+        return `${prefix}${idSeq}`;
+      }
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      function rand(min, max) {
+        return min + Math.random() * (max - min);
+      }
+
+      function distance(a, b) {
+        return Math.hypot(a.x - b.x, a.y - b.y);
+      }
+
+      function pointFromEvent(event) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top
+        };
+      }
+
+      function igwNode() {
+        return {
+          id: IGW_ID,
+          kind: "igw",
+          x: 28,
+          y: clamp(view.h * 0.48, 130, view.h - 130),
+          w: 46,
+          h: 74
+        };
+      }
+
+      function getNode(id) {
+        if (id === IGW_ID) return igwNode();
+        return state.components.find((component) => component.id === id) || null;
+      }
+
+      function getNodePoint(id) {
+        const node = getNode(id);
+        if (!node) return { x: 0, y: 0 };
+        return { x: node.x, y: node.y };
+      }
+
+      function componentAt(point) {
+        for (let i = state.components.length - 1; i >= 0; i -= 1) {
+          const component = state.components[i];
+          if (Math.abs(point.x - component.x) <= component.w / 2 && Math.abs(point.y - component.y) <= component.h / 2) {
+            return component;
+          }
+        }
+        return null;
+      }
+
+      function nodeAt(point) {
+        const component = componentAt(point);
+        if (component) return component;
+        const igw = igwNode();
+        if (point.x >= igw.x - igw.w / 2 && point.x <= igw.x + igw.w / 2 && point.y >= igw.y - igw.h / 2 && point.y <= igw.y + igw.h / 2) {
+          return igw;
+        }
+        return null;
+      }
+
+      function edgeAt(point) {
+        let best = null;
+        let bestDist = 13;
+        for (const edge of state.edges) {
+          const a = getNodePoint(edge.from);
+          const b = getNodePoint(edge.to);
+          const hit = pointToSegmentDistance(point, a, b);
+          if (hit.distance < bestDist) {
+            best = edge;
+            bestDist = hit.distance;
+          }
+        }
+        return best;
+      }
+
+      function pointToSegmentDistance(point, a, b) {
+        const abx = b.x - a.x;
+        const aby = b.y - a.y;
+        const len2 = abx * abx + aby * aby || 1;
+        const t = clamp(((point.x - a.x) * abx + (point.y - a.y) * aby) / len2, 0, 1);
+        const x = a.x + abx * t;
+        const y = a.y + aby * t;
+        return { distance: Math.hypot(point.x - x, point.y - y), x, y, t };
+      }
+
+      function serviceFor(component) {
+        const cores = component.cores;
+        if (!cores.length) {
+          return {
+            id: "empty",
+            name: "Core?",
+            short: "?",
+            level: 0,
+            capacity: 3,
+            processTime: 1500,
+            concurrency: 1,
+            behavior: "wait",
+            handles: [],
+            maxOut: 1,
+            color: "#94a3b8",
+            shape: "empty"
+          };
+        }
+
+        const unique = [...new Set(cores)];
+        if (unique.length === 1) {
+          const core = unique[0];
+          const level = cores.length;
+          if (core === "process") {
+            return {
+              id: "ec2",
+              name: "EC2",
+              short: "EC2",
+              level,
+              capacity: 3 + level,
+              processTime: 1380 - level * 210,
+              concurrency: 1 + Math.floor(level / 2),
+              behavior: "terminal",
+              handles: ["normal", "heavy"],
+              maxOut: 1,
+              color: "#2563eb",
+              shape: "compute"
+            };
+          }
+          if (core === "split") {
+            return {
+              id: "lb",
+              name: "LB",
+              short: "LB",
+              level,
+              capacity: 4 + level,
+              processTime: 460 - level * 60,
+              concurrency: 999,
+              behavior: "roundRobin",
+              handles: [],
+              maxOut: 2 + level,
+              color: "#0891b2",
+              shape: "split"
+            };
+          }
+          if (core === "buffer") {
+            return {
+              id: "sqs",
+              name: "SQS",
+              short: "SQS",
+              level,
+              capacity: 5 + level * 3,
+              processTime: 1380 - level * 180,
+              concurrency: 2 + level,
+              behavior: "buffer",
+              handles: [],
+              maxOut: 1 + Math.floor(level / 2),
+              color: "#d97706",
+              shape: "queue"
+            };
+          }
+          return {
+            id: "s3",
+            name: "S3",
+            short: "S3",
+            level,
+            capacity: 5 + level * 2,
+            processTime: 1680 - level * 230,
+            concurrency: 1 + Math.floor(level / 2),
+            behavior: "terminal",
+            handles: ["dataLight", "dataHeavy"],
+            maxOut: 0,
+            color: "#7c3aed",
+            shape: "store"
+          };
+        }
+
+        const key = unique.slice().sort().join("+");
+        const combo = {
+          "process+split": {
+            id: "alb",
+            name: "ALB",
+            short: "ALB",
+            capacity: 7,
+            processTime: 360,
+            concurrency: 999,
+            behavior: "leastLoaded",
+            handles: [],
+            maxOut: 4,
+            color: "#0f766e",
+            shape: "split"
+          },
+          "buffer+process": {
+            id: "lambda",
+            name: "Lambda",
+            short: "LAM",
+            capacity: 9,
+            processTime: 560,
+            concurrency: 5,
+            behavior: "terminal",
+            handles: ["normal", "heavy"],
+            maxOut: 0,
+            cost: 0.35,
+            color: "#ea580c",
+            shape: "compute"
+          },
+          "process+store": {
+            id: "rdb",
+            name: "RDB",
+            short: "RDB",
+            capacity: 4,
+            processTime: 780,
+            concurrency: 2,
+            behavior: "terminal",
+            handles: ["dataLight", "dataHeavy"],
+            maxOut: 0,
+            color: "#7c2d12",
+            shape: "store"
+          },
+          "buffer+split": {
+            id: "eventbridge",
+            name: "EventBridge",
+            short: "EVB",
+            capacity: 8,
+            processTime: 760,
+            concurrency: 4,
+            behavior: "roundRobin",
+            handles: [],
+            maxOut: 3,
+            color: "#c026d3",
+            shape: "split"
+          },
+          "split+store": {
+            id: "cloudfront",
+            name: "CloudFront",
+            short: "CF",
+            capacity: 7,
+            processTime: 650,
+            concurrency: 4,
+            behavior: "roundRobin",
+            handles: [],
+            maxOut: 3,
+            color: "#0284c7",
+            shape: "split"
+          },
+          "buffer+store": {
+            id: "cloudwatch",
+            name: "CloudWatch",
+            short: "CW",
+            capacity: 7,
+            processTime: 920,
+            concurrency: 2,
+            behavior: "terminal",
+            handles: ["observe"],
+            maxOut: 1,
+            color: "#ca8a04",
+            shape: "observe"
+          }
+        }[key];
+
+        return { ...combo, level: 1 };
+      }
+
+      function allowedOutputs(component) {
+        const service = serviceFor(component);
+        if (component.id === IGW_ID) return 99;
+        return service.maxOut;
+      }
+
+      function outputsFrom(id) {
+        return state.edges.filter((edge) => edge.from === id && getNode(edge.to));
+      }
+
+      function canProcessPacket(component, packetType) {
+        if (!component || component.kind === "igw") return false;
+        const service = serviceFor(component);
+        return service.behavior === "terminal" && service.handles.includes(packetType);
+      }
+
+      function canReachProcessor(fromId, packetType, seen = new Set(), depth = 0) {
+        if (seen.has(fromId) || depth > 6) return false;
+        seen.add(fromId);
+
+        const node = getNode(fromId);
+        if (node && canProcessPacket(node, packetType)) return true;
+
+        return outputsFrom(fromId).some((edge) => {
+          return canReachProcessor(edge.to, packetType, new Set(seen), depth + 1);
+        });
+      }
+
+      function selectPacketEdge(packet, fromId, requireProcessor = false) {
+        const outs = outputsFrom(fromId);
+        if (!outs.length) return null;
+
+        const reachable = outs.filter((edge) => canReachProcessor(edge.to, packet.type, new Set([fromId])));
+        const candidates = reachable.length ? reachable : (requireProcessor ? [] : outs);
+        if (!candidates.length) return null;
+
+        const direct = candidates.filter((edge) => canProcessPacket(getNode(edge.to), packet.type));
+        const pool = direct.length ? direct : candidates;
+        const fromNode = getNode(fromId);
+        const fromService = fromNode && fromId !== IGW_ID ? serviceFor(fromNode) : null;
+
+        if (fromService && fromService.behavior === "leastLoaded") {
+          return pool.slice().sort((a, b) => incomingLoad(a.to) - incomingLoad(b.to))[0];
+        }
+
+        if (fromId === IGW_ID) {
+          const edge = pool[state.igwRoundRobin % pool.length];
+          state.igwRoundRobin += 1;
+          return edge;
+        }
+
+        if (fromNode) {
+          const edge = pool[fromNode.rr % pool.length];
+          fromNode.rr += 1;
+          return edge;
+        }
+
+        return pool[0];
+      }
+
+      function incomingLoad(id) {
+        const target = getNode(id);
+        if (!target || target.kind === "igw") return 0;
+        let moving = 0;
+        for (const packet of state.packets) {
+          if (packet.mode === "edge" && packet.to === id) moving += 1;
+        }
+        return target.queue.length + moving;
+      }
+
+      function createComponent(x, y) {
+        if (state.components.length >= MAX_COMPONENTS) {
+          showToast("コンポーネント上限");
+          return null;
+        }
+
+        const marginTop = 86;
+        const marginBottom = 86;
+        const component = {
+          id: nextId("c"),
+          x: clamp(x, 78, view.w - 78),
+          y: clamp(y, marginTop, view.h - marginBottom),
+          w: 64,
+          h: 54,
+          cores: [],
+          queue: [],
+          rr: 0,
+          pulse: 0,
+          jam: 0,
+          born: 0,
+          reject: 0
+        };
+        state.components.push(component);
+        burst(component.x, component.y, "#172033", 8, 0.75);
+        updateHud();
+        return component;
+      }
+
+      function addCore(component, core) {
+        if (!component || component.kind === "igw") return;
+        const unique = [...new Set(component.cores)];
+        if (!component.cores.length) {
+          component.cores.push(core);
+          component.pulse = 1;
+          showToast(serviceFor(component).name);
+          return;
+        }
+
+        if (unique.length === 1 && unique[0] === core && component.cores.length < 3) {
+          component.cores.push(core);
+          component.pulse = 1;
+          showToast(`${serviceFor(component).name} Lv${component.cores.length}`);
+          return;
+        }
+
+        if (unique.length === 1 && unique[0] !== core && component.cores.length === 1) {
+          component.cores.push(core);
+          component.pulse = 1;
+          showToast(serviceFor(component).name);
+          return;
+        }
+
+        component.reject = 0.7;
+        showToast("コア上限");
+      }
+
+      function addEdge(from, to) {
+        if (!from || !to || from.id === to.id) return;
+        if (from.id !== IGW_ID && to.id === IGW_ID) return;
+        if (state.edges.length >= MAX_NETWORKS) {
+          showToast("NW上限");
+          return;
+        }
+        if (state.edges.some((edge) => edge.from === from.id && edge.to === to.id)) {
+          showToast("接続済み");
+          return;
+        }
+        if (from.id !== IGW_ID) {
+          const outLimit = allowedOutputs(from);
+          if (outputsFrom(from.id).length >= outLimit) {
+            from.reject = 0.7;
+            showToast("接続上限");
+            return;
+          }
+        }
+
+        const edge = {
+          id: nextId("n"),
+          from: from.id,
+          to: to.id,
+          pulse: 1
+        };
+        state.edges.push(edge);
+        burst((from.x + to.x) / 2, (from.y + to.y) / 2, colors.cyan, 5, 0.6);
+        updateHud();
+      }
+
+      function deleteSelected() {
+        const selected = state.selected;
+        if (!selected) return;
+        if (selected.type === "component") {
+          const component = state.components.find((item) => item.id === selected.id);
+          if (!component) return;
+          for (const packet of component.queue) packet.dead = true;
+          state.components = state.components.filter((item) => item.id !== selected.id);
+          state.edges = state.edges.filter((edge) => edge.from !== selected.id && edge.to !== selected.id);
+          for (const packet of state.packets) {
+            if (packet.from === selected.id || packet.to === selected.id || packet.componentId === selected.id) {
+              packet.dead = true;
+            }
+          }
+          burst(component.x, component.y, colors.danger, 16, 1.2);
+        } else if (selected.type === "edge") {
+          const edge = state.edges.find((item) => item.id === selected.id);
+          if (!edge) return;
+          const a = getNodePoint(edge.from);
+          const b = getNodePoint(edge.to);
+          state.edges = state.edges.filter((item) => item.id !== selected.id);
+          for (const packet of state.packets) {
+            if (packet.edgeId === selected.id) {
+              packet.dead = true;
+              changeRevenue(-2.5, packet.x || (a.x + b.x) / 2, packet.y || (a.y + b.y) / 2);
+            }
+          }
+          burst((a.x + b.x) / 2, (a.y + b.y) / 2, colors.danger, 10, 0.8);
+        }
+        state.selected = null;
+        updateHud();
+      }
+
+      function deleteBubble() {
+        if (!state.selected) return null;
+        if (state.selected.type === "component") {
+          const component = state.components.find((item) => item.id === state.selected.id);
+          if (!component) return null;
+          return { x: component.x + component.w / 2 - 4, y: component.y - component.h / 2 - 10, r: 15 };
+        }
+        const edge = state.edges.find((item) => item.id === state.selected.id);
+        if (!edge) return null;
+        const a = getNodePoint(edge.from);
+        const b = getNodePoint(edge.to);
+        return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, r: 15 };
+      }
+
+      function chooseTrafficType() {
+        const ramp = clamp(state.elapsed / 110, 0, 1);
+        const weighted = trafficTypes.map((type) => {
+          let weight = type.weight;
+          if (type.id === "heavy" || type.id === "dataHeavy") weight += ramp * 18;
+          if (type.id === "observe") weight += ramp * 5;
+          return { type, weight };
+        });
+        const total = weighted.reduce((sum, item) => sum + item.weight, 0);
+        let roll = Math.random() * total;
+        for (const item of weighted) {
+          roll -= item.weight;
+          if (roll <= 0) return item.type;
+        }
+        return trafficTypes[0];
+      }
+
+      function spawnTraffic() {
+        const type = chooseTrafficType();
+        const packet = {
+          id: nextId("p"),
+          type: type.id,
+          typeInfo: type,
+          mode: "spawn",
+          x: igwNode().x,
+          y: igwNode().y,
+          radius: type.id === "heavy" || type.id === "dataHeavy" ? 6 : 5,
+          progress: 0,
+          wait: 0,
+          processing: 0,
+          processingStarted: false,
+          wander: { x: rand(-8, 8), y: rand(-6, 6), vx: rand(-12, 12), vy: rand(-12, 12) }
+        };
+        routePacket(packet, IGW_ID);
+      }
+
+      function routePacket(packet, fromId, requireProcessor = false) {
+        const outs = outputsFrom(fromId);
+        if (!outs.length) {
+          if (requireProcessor) return false;
+          const source = getNodePoint(fromId);
+          changeRevenue(-3.5, source.x, source.y);
+          burst(source.x, source.y, colors.danger, 9, 0.8);
+          packet.dead = true;
+          return false;
+        }
+
+        const edge = selectPacketEdge(packet, fromId, requireProcessor);
+        if (!edge) {
+          return false;
+        }
+
+        const a = getNodePoint(edge.from);
+        const b = getNodePoint(edge.to);
+        packet.mode = "edge";
+        packet.edgeId = edge.id;
+        packet.from = edge.from;
+        packet.to = edge.to;
+        packet.progress = 0;
+        packet.x = a.x;
+        packet.y = a.y;
+        packet.speed = rand(74, 98);
+        if (!state.packets.includes(packet)) state.packets.push(packet);
+        return true;
+      }
+
+      function enqueuePacket(packet, component) {
+        if (!component) {
+          packet.dead = true;
+          return;
+        }
+        const service = serviceFor(component);
+        if (component.queue.length >= service.capacity) {
+          component.jam = 1.1;
+          state.screenShake = Math.max(state.screenShake, 0.36);
+          changeRevenue(-7.5, component.x, component.y);
+          burst(component.x, component.y, colors.danger, 24, 1.6);
+          packet.dead = true;
+          return;
+        }
+
+        packet.mode = "queue";
+        packet.componentId = component.id;
+        packet.wait = 0;
+        packet.processing = 0;
+        packet.processingStarted = false;
+        packet.wander = { x: rand(-12, 12), y: rand(-10, 10), vx: rand(-20, 20), vy: rand(-20, 20) };
+        component.queue.push(packet);
+      }
+
+      function updateQueues(dt) {
+        for (const component of state.components) {
+          const service = serviceFor(component);
+          component.jam = Math.max(0, component.jam - dt * 1.9);
+          component.pulse = Math.max(0, component.pulse - dt * 1.8);
+          component.reject = Math.max(0, component.reject - dt * 2.2);
+
+          const running = component.queue.filter((packet) => packet.processingStarted).length;
+          let freeSlots = Math.max(0, service.concurrency - running);
+
+          for (const packet of component.queue) {
+            packet.wait += dt;
+            const boundX = component.w * 0.32;
+            const boundY = component.h * 0.24;
+            packet.wander.x += packet.wander.vx * dt;
+            packet.wander.y += packet.wander.vy * dt;
+            if (Math.abs(packet.wander.x) > boundX) {
+              packet.wander.x = Math.sign(packet.wander.x) * boundX;
+              packet.wander.vx *= -1;
+            }
+            if (Math.abs(packet.wander.y) > boundY) {
+              packet.wander.y = Math.sign(packet.wander.y) * boundY;
+              packet.wander.vy *= -1;
+            }
+            packet.x = component.x + packet.wander.x;
+            packet.y = component.y + packet.wander.y;
+
+            if (service.behavior === "terminal") {
+              if (!service.handles.includes(packet.type)) {
+                if (routePacket(packet, component.id, true)) {
+                  component.queue = component.queue.filter((item) => item.id !== packet.id);
+                } else {
+                  component.jam = Math.max(component.jam, 0.35);
+                }
+                continue;
+              }
+              if (!packet.processingStarted && freeSlots > 0) {
+                packet.processingStarted = true;
+                packet.processing = service.processTime / 1000 * (packet.type === "heavy" || packet.type === "dataHeavy" ? 1.32 : 1);
+                freeSlots -= 1;
+              }
+              if (packet.processingStarted) {
+                packet.processing -= dt;
+                if (packet.processing <= 0) {
+                  const gain = packet.typeInfo.value - (service.cost || 0);
+                  state.stats.handled += 1;
+                  changeRevenue(gain, component.x, component.y);
+                  component.pulse = 0.65;
+                  burst(component.x, component.y, packet.typeInfo.color, 5, 0.5);
+                  packet.dead = true;
+                }
+              }
+            } else if (service.behavior === "roundRobin" || service.behavior === "leastLoaded" || service.behavior === "buffer") {
+              const delay = service.processTime / 1000;
+              if (packet.wait >= delay) {
+                const outs = outputsFrom(component.id);
+                if (outs.length) {
+                  component.queue = component.queue.filter((item) => item.id !== packet.id);
+                  routePacket(packet, component.id);
+                } else {
+                  component.jam = Math.max(component.jam, 0.6);
+                  if (packet.wait > delay + 2.25 && service.behavior !== "buffer") {
+                    changeRevenue(-3.5, component.x, component.y);
+                    burst(component.x, component.y, colors.danger, 8, 0.6);
+                    packet.dead = true;
+                  }
+                }
+              }
+            } else {
+              component.jam = Math.max(component.jam, 0.42);
+            }
+          }
+
+          component.queue = component.queue.filter((packet) => !packet.dead);
+          const serviceNow = serviceFor(component);
+          if (component.queue.length >= serviceNow.capacity * 0.75) {
+            component.jam = Math.max(component.jam, 0.22);
+          }
+        }
+      }
+
+      function updatePackets(dt) {
+        for (const packet of state.packets) {
+          if (packet.dead) continue;
+          if (packet.mode === "edge") {
+            const edge = state.edges.find((item) => item.id === packet.edgeId);
+            if (!edge) {
+              packet.dead = true;
+              continue;
+            }
+            const a = getNodePoint(edge.from);
+            const b = getNodePoint(edge.to);
+            const len = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
+            packet.progress += dt * packet.speed / len;
+            const wobble = Math.sin((packet.progress * 5 + packet.id.length) * Math.PI) * 1.4;
+            const nx = -(b.y - a.y) / len;
+            const ny = (b.x - a.x) / len;
+            packet.x = a.x + (b.x - a.x) * packet.progress + nx * wobble;
+            packet.y = a.y + (b.y - a.y) * packet.progress + ny * wobble;
+            if (packet.progress >= 1) {
+              const component = state.components.find((item) => item.id === edge.to);
+              enqueuePacket(packet, component);
+            }
+          }
+        }
+        state.packets = state.packets.filter((packet) => !packet.dead);
+      }
+
+      function updateParticles(dt) {
+        for (const particle of state.particles) {
+          particle.life -= dt;
+          particle.x += particle.vx * dt;
+          particle.y += particle.vy * dt;
+          particle.vx *= Math.pow(0.2, dt);
+          particle.vy *= Math.pow(0.2, dt);
+        }
+        state.particles = state.particles.filter((particle) => particle.life > 0);
+
+        for (const floater of state.floaters) {
+          floater.life -= dt;
+          floater.y -= 24 * dt;
+        }
+        state.floaters = state.floaters.filter((floater) => floater.life > 0);
+      }
+
+      function burst(x, y, color, count, force) {
+        for (let i = 0; i < count; i += 1) {
+          const angle = rand(0, Math.PI * 2);
+          const speed = rand(30, 120) * force;
+          state.particles.push({
+            x,
+            y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            r: rand(2, 4.5),
+            color,
+            life: rand(0.25, 0.75)
+          });
+        }
+      }
+
+      function changeRevenue(amount, x, y) {
+        state.revenue = Math.max(0, state.revenue + amount);
+        state.stats.peakRevenue = Math.max(state.stats.peakRevenue, state.revenue);
+        if (amount >= 0) {
+          state.stats.gain += amount;
+        } else {
+          state.stats.loss += Math.abs(amount);
+          state.stats.errors += 1;
+        }
+        state.floaters.push({
+          x,
+          y,
+          text: `${amount >= 0 ? "+" : ""}${amount.toFixed(amount % 1 ? 1 : 0)}`,
+          color: amount >= 0 ? colors.ok : colors.danger,
+          life: 0.9
+        });
+        updateHud();
+        if (state.revenue <= 0 && state.status === "playing") {
+          finish(false, "売上が0になりました。");
+        } else if (state.revenue >= TARGET_REVENUE && state.status === "playing") {
+          finish(true, "売上100を達成しました。");
+        }
+      }
+
+      function finish(won, message) {
+        state.status = won ? "clear" : "gameover";
+        state.paletteOpen = false;
+        palette.classList.add("closed");
+        screenKicker.textContent = won ? "RESULT / CLEAR" : "RESULT / DOWN";
+        resultTitle.textContent = won ? "CLEAR" : "GAME OVER";
+        resultText.textContent = message;
+        statRevenue.textContent = Math.floor(state.revenue);
+        statHandled.textContent = state.stats.handled;
+        statErrors.textContent = state.stats.errors;
+        statTime.textContent = `${Math.max(0, ROUND_SECONDS - Math.floor(state.elapsed))}s`;
+        resultStats.hidden = false;
+        restartButton.textContent = "もう一度";
+        titleButton.hidden = false;
+        resultActions.classList.add("two");
+        overlay.classList.add("visible");
+      }
+
+      function updateHud() {
+        revenueText.textContent = `売上 ${Math.floor(state.revenue)}`;
+        const remaining = Math.max(0, ROUND_SECONDS - Math.floor(state.elapsed));
+        timerText.textContent = `${remaining}s`;
+        goalText.textContent = `目標 ${TARGET_REVENUE}`;
+        compQuota.textContent = `${state.components.length}/${MAX_COMPONENTS}`;
+        netQuota.textContent = `${state.edges.length}/${MAX_NETWORKS}`;
+      }
+
+      function showToast(message, duration = 900) {
+        toast.textContent = message;
+        toast.classList.add("visible");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove("visible"), duration);
+      }
+
+      function update(dt) {
+        if (state.status !== "playing") {
+          updateParticles(dt);
+          return;
+        }
+
+        state.elapsed += dt;
+        state.screenShake = Math.max(0, state.screenShake - dt * 1.6);
+        state.spawnTimer -= dt;
+        state.spawnInterval = clamp(1.48 - state.elapsed / 180 * 0.72, 0.68, 1.48);
+        if (state.spawnTimer <= 0) {
+          spawnTraffic();
+          state.spawnTimer += state.spawnInterval * rand(0.8, 1.15);
+        }
+
+        updatePackets(dt);
+        updateQueues(dt);
+        updateParticles(dt);
+
+        if (state.elapsed >= ROUND_SECONDS && state.status === "playing") {
+          finish(true, "180秒耐え切りました。");
+        }
+
+        updateHud();
+      }
+
+      function draw() {
+        ctx.clearRect(0, 0, view.w, view.h);
+        ctx.save();
+        if (state.screenShake > 0) {
+          ctx.translate(rand(-3, 3) * state.screenShake, rand(-3, 3) * state.screenShake);
+        }
+
+        drawPlayBounds();
+        drawEdges();
+        drawIgw();
+        drawComponents();
+        drawPackets();
+        drawParticles();
+        drawFloaters();
+        drawPointerAction();
+        drawSelection();
+
+        ctx.restore();
+      }
+
+      function drawPlayBounds() {
+        const top = 76;
+        const bottom = view.h - 74;
+        ctx.save();
+        ctx.strokeStyle = "rgba(23, 32, 51, 0.12)";
+        ctx.setLineDash([5, 10]);
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(8, top);
+        ctx.lineTo(view.w - 8, top);
+        ctx.moveTo(8, bottom);
+        ctx.lineTo(view.w - 8, bottom);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawEdges() {
+        for (const edge of state.edges) {
+          const a = getNodePoint(edge.from);
+          const b = getNodePoint(edge.to);
+          const selected = state.selected && state.selected.type === "edge" && state.selected.id === edge.id;
+          const pulse = Math.max(0, edge.pulse || 0);
+          edge.pulse = Math.max(0, pulse - 0.04);
+
+          ctx.save();
+          ctx.lineCap = "round";
+          ctx.lineJoin = "round";
+          ctx.strokeStyle = selected ? colors.danger : colors.edge;
+          ctx.lineWidth = selected ? 8 : 6;
+          ctx.globalAlpha = 0.9;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+
+          if (pulse > 0) {
+            ctx.strokeStyle = colors.cyan;
+            ctx.globalAlpha = pulse;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+          }
+
+          const angle = Math.atan2(b.y - a.y, b.x - a.x);
+          const arrowX = a.x + (b.x - a.x) * 0.72;
+          const arrowY = a.y + (b.y - a.y) * 0.72;
+          ctx.fillStyle = selected ? colors.danger : colors.edge;
+          ctx.globalAlpha = 0.95;
+          ctx.beginPath();
+          ctx.moveTo(arrowX + Math.cos(angle) * 9, arrowY + Math.sin(angle) * 9);
+          ctx.lineTo(arrowX + Math.cos(angle + 2.45) * 8, arrowY + Math.sin(angle + 2.45) * 8);
+          ctx.lineTo(arrowX + Math.cos(angle - 2.45) * 8, arrowY + Math.sin(angle - 2.45) * 8);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      function drawIgw() {
+        const node = igwNode();
+        ctx.save();
+        ctx.translate(node.x, node.y);
+        roundRect(ctx, -node.w / 2, -node.h / 2, node.w, node.h, 8);
+        ctx.fillStyle = "#fff";
+        ctx.fill();
+        ctx.strokeStyle = colors.ink;
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        ctx.fillStyle = colors.ink;
+        ctx.font = "900 13px ui-rounded, system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("IGW", 0, -16);
+
+        ctx.strokeStyle = "#f97316";
+        ctx.lineWidth = 2.3;
+        ctx.beginPath();
+        ctx.arc(0, 9, 13, -0.6, Math.PI * 1.32);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(-7, 9);
+        ctx.lineTo(9, 9);
+        ctx.moveTo(2, 3);
+        ctx.lineTo(9, 9);
+        ctx.lineTo(2, 15);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawComponents() {
+        for (const component of state.components) {
+          const service = serviceFor(component);
+          const overloaded = component.jam > 0;
+          const shake = overloaded ? Math.sin(performance.now() * 0.05 + component.x) * 2.4 * component.jam : 0;
+          const reject = component.reject > 0;
+
+          ctx.save();
+          ctx.translate(component.x + shake, component.y);
+
+          if (overloaded) {
+            ctx.shadowColor = colors.danger;
+            ctx.shadowBlur = 13 + Math.sin(performance.now() * 0.018) * 6;
+          } else if (component.pulse > 0) {
+            ctx.shadowColor = service.color;
+            ctx.shadowBlur = 10 * component.pulse;
+          }
+
+          roundRect(ctx, -component.w / 2, -component.h / 2, component.w, component.h, 11);
+          ctx.fillStyle = "#fff";
+          ctx.fill();
+          ctx.lineWidth = reject ? 4 : 2.5;
+          ctx.strokeStyle = overloaded && Math.sin(performance.now() * 0.018) > -0.1 ? colors.danger : service.color;
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+
+          drawServiceIcon(service, 0, -6);
+
+          ctx.fillStyle = colors.ink;
+          ctx.font = "900 11px ui-rounded, system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          const name = service.name.length > 10 ? service.short : service.name;
+          ctx.fillText(name, 0, 15);
+
+          if (service.level > 1) {
+            ctx.fillStyle = service.color;
+            ctx.font = "900 9px ui-rounded, system-ui, sans-serif";
+            ctx.fillText(`Lv${service.level}`, 22, -16);
+          }
+
+          drawCorePips(component, -component.w / 2 + 10, -component.h / 2 - 7);
+          drawCapacity(component, service);
+          ctx.restore();
+        }
+      }
+
+      function drawServiceIcon(service, x, y) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.strokeStyle = service.color;
+        ctx.fillStyle = service.color;
+        ctx.lineWidth = 2;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        if (service.shape === "compute") {
+          ctx.strokeRect(-9, -9, 18, 18);
+          for (let i = -1; i <= 1; i += 1) {
+            ctx.beginPath();
+            ctx.moveTo(-13, i * 6);
+            ctx.lineTo(-9, i * 6);
+            ctx.moveTo(9, i * 6);
+            ctx.lineTo(13, i * 6);
+            ctx.stroke();
+          }
+        } else if (service.shape === "split") {
+          ctx.beginPath();
+          ctx.moveTo(-13, 0);
+          ctx.lineTo(-2, 0);
+          ctx.quadraticCurveTo(5, 0, 12, -9);
+          ctx.moveTo(-2, 0);
+          ctx.quadraticCurveTo(5, 0, 12, 9);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(14, -10, 2.7, 0, Math.PI * 2);
+          ctx.arc(14, 10, 2.7, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (service.shape === "queue") {
+          ctx.beginPath();
+          ctx.ellipse(0, -8, 13, 5, 0, 0, Math.PI * 2);
+          ctx.moveTo(-13, -8);
+          ctx.lineTo(-13, 8);
+          ctx.ellipse(0, 8, 13, 5, 0, 0, Math.PI);
+          ctx.moveTo(13, -8);
+          ctx.lineTo(13, 8);
+          ctx.stroke();
+        } else if (service.shape === "store") {
+          ctx.strokeRect(-12, -12, 24, 24);
+          ctx.beginPath();
+          ctx.moveTo(-4, -12);
+          ctx.lineTo(-4, 12);
+          ctx.moveTo(5, -12);
+          ctx.lineTo(5, 12);
+          ctx.moveTo(-12, -4);
+          ctx.lineTo(12, -4);
+          ctx.moveTo(-12, 5);
+          ctx.lineTo(12, 5);
+          ctx.stroke();
+        } else if (service.shape === "observe") {
+          ctx.beginPath();
+          ctx.arc(0, 0, 12, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(-5, 4);
+          ctx.lineTo(-1, 0);
+          ctx.lineTo(3, 3);
+          ctx.lineTo(8, -6);
+          ctx.stroke();
+        } else {
+          ctx.strokeStyle = "#94a3b8";
+          ctx.beginPath();
+          ctx.arc(0, 0, 11, 0, Math.PI * 2);
+          ctx.moveTo(-5, 0);
+          ctx.lineTo(5, 0);
+          ctx.moveTo(0, -5);
+          ctx.lineTo(0, 5);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      function drawCorePips(component, x, y) {
+        const cores = component.cores;
+        for (let i = 0; i < cores.length; i += 1) {
+          ctx.save();
+          ctx.translate(x + i * 13, y);
+          ctx.fillStyle = coreColors[cores[i]];
+          ctx.beginPath();
+          ctx.arc(0, 0, 6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#fff";
+          ctx.font = "900 8px ui-rounded, system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(coreLabels[cores[i]], 0, 0.5);
+          ctx.restore();
+        }
+      }
+
+      function drawCapacity(component, service) {
+        const ratio = clamp(component.queue.length / service.capacity, 0, 1);
+        ctx.save();
+        ctx.translate(-component.w / 2 + 7, component.h / 2 - 7);
+        ctx.fillStyle = "rgba(100, 116, 139, 0.22)";
+        roundRect(ctx, 0, 0, component.w - 14, 4, 2);
+        ctx.fill();
+        ctx.fillStyle = ratio > 0.75 ? colors.danger : service.color;
+        roundRect(ctx, 0, 0, (component.w - 14) * ratio, 4, 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawPackets() {
+        for (const packet of state.packets) {
+          if (packet.dead || !packet.x || !packet.y) continue;
+          ctx.save();
+          ctx.fillStyle = packet.typeInfo.color;
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.arc(packet.x, packet.y, packet.radius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          if (packet.processingStarted) {
+            ctx.strokeStyle = colors.ink;
+            ctx.globalAlpha = 0.45;
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.arc(packet.x, packet.y, packet.radius + 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 1.45);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
+
+      function drawParticles() {
+        for (const particle of state.particles) {
+          ctx.save();
+          ctx.globalAlpha = clamp(particle.life / 0.65, 0, 1);
+          ctx.fillStyle = particle.color;
+          ctx.beginPath();
+          ctx.arc(particle.x, particle.y, particle.r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      function drawFloaters() {
+        for (const floater of state.floaters) {
+          ctx.save();
+          ctx.globalAlpha = clamp(floater.life / 0.9, 0, 1);
+          ctx.fillStyle = floater.color;
+          ctx.font = "900 14px ui-rounded, system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(floater.text, floater.x, floater.y);
+          ctx.restore();
+        }
+      }
+
+      function drawPointerAction() {
+        if (!pointerAction || !pointerAction.wiring || !pointerAction.current) return;
+        const from = getNodePoint(pointerAction.from.id);
+        const to = pointerAction.current;
+        ctx.save();
+        ctx.strokeStyle = colors.cyan;
+        ctx.lineWidth = 5;
+        ctx.lineCap = "round";
+        ctx.setLineDash([8, 8]);
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(to.x, to.y);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawSelection() {
+        const bubble = deleteBubble();
+        if (!bubble) return;
+        ctx.save();
+        ctx.fillStyle = "#fff";
+        ctx.strokeStyle = colors.danger;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(bubble.x, bubble.y, bubble.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.strokeStyle = colors.danger;
+        ctx.lineWidth = 2.7;
+        ctx.beginPath();
+        ctx.moveTo(bubble.x - 5, bubble.y - 5);
+        ctx.lineTo(bubble.x + 5, bubble.y + 5);
+        ctx.moveTo(bubble.x + 5, bubble.y - 5);
+        ctx.lineTo(bubble.x - 5, bubble.y + 5);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function roundRect(context, x, y, w, h, radius) {
+        const r = Math.min(radius, Math.abs(w) / 2, Math.abs(h) / 2);
+        context.beginPath();
+        context.moveTo(x + r, y);
+        context.arcTo(x + w, y, x + w, y + h, r);
+        context.arcTo(x + w, y + h, x, y + h, r);
+        context.arcTo(x, y + h, x, y, r);
+        context.arcTo(x, y, x + w, y, r);
+        context.closePath();
+      }
+
+      function renderToolSvg(kind, core) {
+        const source = [...document.querySelectorAll(".tool")].find((tool) => {
+          return tool.dataset.kind === kind && (kind !== "core" || tool.dataset.core === core);
+        });
+        const svg = source ? source.querySelector("svg").cloneNode(true) : null;
+        dragGhost.innerHTML = "";
+        if (svg) dragGhost.appendChild(svg);
+        dragGhost.style.color = kind === "core" ? coreColors[core] : colors.ink;
+      }
+
+      function beginPaletteDrag(event, tool) {
+        const kind = tool.dataset.kind;
+        const core = tool.dataset.core || null;
+        tool.classList.add("show-label");
+        setTimeout(() => tool.classList.remove("show-label"), 700);
+        activeDrag = {
+          kind,
+          core,
+          startX: event.clientX,
+          startY: event.clientY,
+          x: event.clientX,
+          y: event.clientY,
+          moved: false
+        };
+        renderToolSvg(kind, core);
+        dragGhost.classList.add("visible");
+        dragGhost.style.left = `${event.clientX}px`;
+        dragGhost.style.top = `${event.clientY}px`;
+        event.preventDefault();
+      }
+
+      function movePaletteDrag(event) {
+        if (!activeDrag) return;
+        activeDrag.x = event.clientX;
+        activeDrag.y = event.clientY;
+        if (Math.hypot(activeDrag.x - activeDrag.startX, activeDrag.y - activeDrag.startY) > 4) {
+          activeDrag.moved = true;
+        }
+        dragGhost.style.left = `${activeDrag.x}px`;
+        dragGhost.style.top = `${activeDrag.y}px`;
+      }
+
+      function endPaletteDrag(event) {
+        if (!activeDrag) return;
+        const point = pointFromEvent(event);
+        const drag = activeDrag;
+        activeDrag = null;
+        dragGhost.classList.remove("visible");
+
+        if (drag.kind === "component") {
+          if (point.y > 76 && point.y < view.h - 62) createComponent(point.x, point.y);
+          return;
+        }
+
+        if (drag.kind === "core") {
+          const component = componentAt(point);
+          if (component) {
+            addCore(component, drag.core);
+          } else {
+            showToast("コンポーネントへ");
+          }
+        }
+      }
+
+      function onCanvasPointerDown(event) {
+        if (activeDrag || state.status !== "playing") return;
+        const point = pointFromEvent(event);
+        const bubble = deleteBubble();
+        if (bubble && Math.hypot(point.x - bubble.x, point.y - bubble.y) <= bubble.r + 12) {
+          deleteSelected();
+          event.preventDefault();
+          return;
+        }
+
+        const node = nodeAt(point);
+        if (node) {
+          pointerAction = {
+            type: "node",
+            from: node,
+            start: point,
+            current: point,
+            wiring: false
+          };
+          event.preventDefault();
+          return;
+        }
+
+        const edge = edgeAt(point);
+        if (edge) {
+          if (state.selected && state.selected.type === "edge" && state.selected.id === edge.id) {
+            deleteSelected();
+          } else {
+            state.selected = { type: "edge", id: edge.id };
+          }
+          event.preventDefault();
+          return;
+        }
+
+        state.selected = null;
+      }
+
+      function onCanvasPointerMove(event) {
+        if (!pointerAction) return;
+        const point = pointFromEvent(event);
+        pointerAction.current = point;
+        const moved = Math.hypot(point.x - pointerAction.start.x, point.y - pointerAction.start.y);
+        if (moved > 12) {
+          pointerAction.wiring = true;
+        }
+        event.preventDefault();
+      }
+
+      function onCanvasPointerUp(event) {
+        if (!pointerAction) return;
+        const point = pointFromEvent(event);
+        const action = pointerAction;
+        pointerAction = null;
+
+        if (action.wiring) {
+          const target = nodeAt(point);
+          if (target && target.id !== action.from.id) {
+            addEdge(action.from, target);
+          }
+          event.preventDefault();
+          return;
+        }
+
+        if (action.from.kind !== "igw") {
+          if (state.selected && state.selected.type === "component" && state.selected.id === action.from.id) {
+            deleteSelected();
+          } else {
+            state.selected = { type: "component", id: action.from.id };
+          }
+        } else {
+          state.selected = null;
+        }
+        event.preventDefault();
+      }
+
+      function loop(now) {
+        const dt = Math.min(0.033, (now - lastTime) / 1000 || 0);
+        lastTime = now;
+        update(dt);
+        draw();
+        requestAnimationFrame(loop);
+      }
+
+      paletteToggle.addEventListener("pointerdown", (event) => {
+        state.paletteOpen = !state.paletteOpen;
+        palette.classList.toggle("closed", !state.paletteOpen);
+        event.preventDefault();
+      });
+
+      for (const tool of document.querySelectorAll(".tool")) {
+        tool.addEventListener("pointerdown", (event) => beginPaletteDrag(event, tool));
+      }
+
+      window.addEventListener("pointermove", (event) => {
+        movePaletteDrag(event);
+        onCanvasPointerMove(event);
+      }, { passive: false });
+
+      window.addEventListener("pointerup", (event) => {
+        endPaletteDrag(event);
+        onCanvasPointerUp(event);
+      }, { passive: false });
+
+      canvas.addEventListener("pointerdown", onCanvasPointerDown, { passive: false });
+      canvas.addEventListener("pointercancel", () => {
+        pointerAction = null;
+        activeDrag = null;
+        dragGhost.classList.remove("visible");
+      });
+
+      restartButton.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        startGame();
+      });
+
+      titleButton.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        resetState("ready");
+      });
+
+      window.addEventListener("resize", resize);
+
+      resize();
+      resetState("ready");
+      requestAnimationFrame((now) => {
+        lastTime = now;
+        requestAnimationFrame(loop);
+      });
+    })();
+  </script>
+</body>
+</html>
