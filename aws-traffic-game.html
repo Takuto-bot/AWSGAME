@@ -975,7 +975,7 @@
             processTime: 1680 - level * 230,
             concurrency: 1 + Math.floor(level / 2),
             behavior: "terminal",
-            handles: ["dataLight", "dataHeavy"],
+            handles: ["dataLight", "dataHeavy", "observe"],
             maxOut: 0,
             color: "#7c3aed",
             shape: "store"
@@ -1019,7 +1019,7 @@
             processTime: 780,
             concurrency: 2,
             behavior: "terminal",
-            handles: ["dataLight", "dataHeavy"],
+            handles: ["dataLight", "dataHeavy", "observe"],
             maxOut: 0,
             color: "#7c2d12",
             shape: "store"
@@ -1058,7 +1058,7 @@
             processTime: 920,
             concurrency: 2,
             behavior: "terminal",
-            handles: ["observe"],
+            handles: [],
             maxOut: 1,
             color: "#ca8a04",
             shape: "observe"
