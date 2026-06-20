@@ -20,6 +20,9 @@
       --red: #ef4444;
       --purple: #a855f7;
       --yellow: #eab308;
+      --tool-size: clamp(42px, min(12vw, 8vh), 54px);
+      --toggle-size: clamp(52px, min(15vw, 10vh), 62px);
+      --tool-icon: calc(var(--tool-size) * 0.58);
       font-family: ui-rounded, "SF Pro Rounded", "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
     }
 
@@ -123,8 +126,8 @@
       z-index: 5;
       right: max(14px, env(safe-area-inset-right));
       bottom: max(14px, env(safe-area-inset-bottom));
-      width: 62px;
-      height: 62px;
+      width: var(--toggle-size);
+      height: var(--toggle-size);
       display: grid;
       place-items: center;
       border: 2px solid var(--ink);
@@ -150,10 +153,10 @@
       position: absolute;
       z-index: 6;
       right: max(12px, env(safe-area-inset-right));
-      bottom: calc(max(84px, env(safe-area-inset-bottom) + 84px));
+      bottom: calc(max(74px, env(safe-area-inset-bottom) + 74px));
       display: grid;
-      gap: 8px;
-      padding: 8px;
+      gap: clamp(6px, 1.5vh, 8px);
+      padding: clamp(6px, 1.5vh, 8px);
       border: 2px solid var(--ink);
       border-radius: 8px;
       background: var(--panel);
@@ -169,8 +172,8 @@
     }
 
     .tool {
-      width: 54px;
-      height: 54px;
+      width: var(--tool-size);
+      height: var(--tool-size);
       display: grid;
       place-items: center;
       position: relative;
@@ -187,8 +190,8 @@
     }
 
     .tool svg {
-      width: 31px;
-      height: 31px;
+      width: var(--tool-icon);
+      height: var(--tool-icon);
       stroke: currentColor;
       stroke-width: 2.35;
       fill: none;
@@ -243,8 +246,8 @@
     .drag-ghost {
       position: absolute;
       z-index: 20;
-      width: 58px;
-      height: 58px;
+      width: calc(var(--tool-size) + 4px);
+      height: calc(var(--tool-size) + 4px);
       display: none;
       place-items: center;
       border: 2px solid var(--ink);
@@ -261,8 +264,8 @@
     }
 
     .drag-ghost svg {
-      width: 34px;
-      height: 34px;
+      width: calc(var(--tool-icon) + 3px);
+      height: calc(var(--tool-icon) + 3px);
       stroke: currentColor;
       stroke-width: 2.35;
       fill: none;
@@ -431,18 +434,18 @@
 
     @media (max-height: 590px) {
       .tool {
-        width: 48px;
-        height: 48px;
+        width: var(--tool-size);
+        height: var(--tool-size);
       }
 
       .tool svg {
-        width: 28px;
-        height: 28px;
+        width: var(--tool-icon);
+        height: var(--tool-icon);
       }
 
       .palette-toggle {
-        width: 56px;
-        height: 56px;
+        width: var(--toggle-size);
+        height: var(--toggle-size);
       }
     }
   </style>
@@ -515,7 +518,7 @@
     <div class="overlay visible" id="overlay">
       <div class="result">
         <div class="screen-rail" aria-hidden="true">
-          <span>IGW</span><i></i><b></b><i></i><b></b>
+          <span>USER</span><i></i><b></b><i></i><b></b>
         </div>
         <p class="screen-kicker" id="screenKicker">AWS Traffic Builder</p>
         <h1 id="resultTitle">TRAFFIC OPS</h1>
@@ -566,7 +569,7 @@
       const TARGET_REVENUE = 100;
       const ROUND_SECONDS = 180;
       const NODE_RADIUS = 30;
-      const IGW_ID = "igw";
+      const SOURCE_PREFIX = "u";
 
       const colors = {
         ink: "#172033",
@@ -591,6 +594,14 @@
         { id: "heavy", label: "重", color: colors.red, value: 2.7, weight: 14 },
         { id: "dataHeavy", label: "重DB", color: colors.purple, value: 3.1, weight: 12 },
         { id: "observe", label: "ログ", color: colors.yellow, value: 1.2, weight: 7 }
+      ];
+
+      const userPersonas = [
+        { name: "Dev", color: "#2563eb", interval: 1.7, comments: ["デプロイ通して", "朝までにお願い", "ログも見たい"] },
+        { name: "Ops", color: "#0891b2", interval: 1.45, comments: ["落ち着いて処理", "ピーク来ます", "監視してるよ"] },
+        { name: "Data", color: "#7c3aed", interval: 1.9, comments: ["データ重め", "保存先どこ?", "RDBある?"] },
+        { name: "VIP", color: "#dc2626", interval: 1.25, comments: ["急ぎで!", "重いけど頼む", "待てません"] },
+        { name: "Guest", color: "#16a34a", interval: 1.65, comments: ["ちょっと送るね", "見にきたよ", "軽めです"] }
       ];
 
       const coreColors = {
@@ -625,12 +636,14 @@
           spawnTimer: 2.1,
           spawnInterval: 1.48,
           components: [],
+          users: [],
           edges: [],
           packets: [],
           particles: [],
+          effects: [],
           floaters: [],
           selected: null,
-          igwRoundRobin: 0,
+          userSpawnTimer: 0.6,
           paletteOpen: status === "playing",
           screenShake: 0,
           stats: {
@@ -645,6 +658,8 @@
         if (status === "ready") {
           showStartScreen();
         } else {
+          spawnUser("left", true);
+          spawnUser("bottom", true);
           overlay.classList.remove("visible");
           showToast("AWS Traffic Builder", 1200);
         }
@@ -690,6 +705,17 @@
         return min + Math.random() * (max - min);
       }
 
+      function mixHex(a, b, t) {
+        const parse = (hex) => {
+          const clean = hex.replace("#", "");
+          return [0, 2, 4].map((start) => parseInt(clean.slice(start, start + 2), 16));
+        };
+        const left = parse(a);
+        const right = parse(b);
+        const mixed = left.map((value, index) => Math.round(value + (right[index] - value) * clamp(t, 0, 1)));
+        return `rgb(${mixed[0]}, ${mixed[1]}, ${mixed[2]})`;
+      }
+
       function distance(a, b) {
         return Math.hypot(a.x - b.x, a.y - b.y);
       }
@@ -702,19 +728,13 @@
         };
       }
 
-      function igwNode() {
-        return {
-          id: IGW_ID,
-          kind: "igw",
-          x: 28,
-          y: clamp(view.h * 0.48, 130, view.h - 130),
-          w: 46,
-          h: 74
-        };
+      function isUserId(id) {
+        return typeof id === "string" && id.startsWith(SOURCE_PREFIX);
       }
 
       function getNode(id) {
-        if (id === IGW_ID) return igwNode();
+        const user = state.users.find((source) => source.id === id);
+        if (user) return user;
         return state.components.find((component) => component.id === id) || null;
       }
 
@@ -737,9 +757,11 @@
       function nodeAt(point) {
         const component = componentAt(point);
         if (component) return component;
-        const igw = igwNode();
-        if (point.x >= igw.x - igw.w / 2 && point.x <= igw.x + igw.w / 2 && point.y >= igw.y - igw.h / 2 && point.y <= igw.y + igw.h / 2) {
-          return igw;
+        for (let i = state.users.length - 1; i >= 0; i -= 1) {
+          const user = state.users[i];
+          if (point.x >= user.x - user.w / 2 && point.x <= user.x + user.w / 2 && point.y >= user.y - user.h / 2 && point.y <= user.y + user.h / 2) {
+            return user;
+          }
         }
         return null;
       }
@@ -767,6 +789,104 @@
         const x = a.x + abx * t;
         const y = a.y + aby * t;
         return { distance: Math.hypot(point.x - x, point.y - y), x, y, t };
+      }
+
+      function componentSize() {
+        const w = Math.round(clamp(Math.min(view.w * 0.16, view.h * 0.1), 48, 62));
+        return { w, h: Math.round(w * 0.84) };
+      }
+
+      function userIconSize() {
+        return Math.round(clamp(Math.min(view.w * 0.12, view.h * 0.075), 38, 50));
+      }
+
+      function nodeBounds(node, pad = 0) {
+        return {
+          left: node.x - node.w / 2 - pad,
+          right: node.x + node.w / 2 + pad,
+          top: node.y - node.h / 2 - pad,
+          bottom: node.y + node.h / 2 + pad
+        };
+      }
+
+      function rectsOverlap(a, b) {
+        return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+      }
+
+      function pointInRect(point, rect) {
+        return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
+      }
+
+      function orientation(a, b, c) {
+        const value = (b.y - a.y) * (c.x - b.x) - (b.x - a.x) * (c.y - b.y);
+        if (Math.abs(value) < 0.001) return 0;
+        return value > 0 ? 1 : 2;
+      }
+
+      function onSegment(a, b, c) {
+        return b.x <= Math.max(a.x, c.x) + 0.001 && b.x >= Math.min(a.x, c.x) - 0.001 &&
+          b.y <= Math.max(a.y, c.y) + 0.001 && b.y >= Math.min(a.y, c.y) - 0.001;
+      }
+
+      function segmentsIntersect(a, b, c, d) {
+        const o1 = orientation(a, b, c);
+        const o2 = orientation(a, b, d);
+        const o3 = orientation(c, d, a);
+        const o4 = orientation(c, d, b);
+        if (o1 !== o2 && o3 !== o4) return true;
+        if (o1 === 0 && onSegment(a, c, b)) return true;
+        if (o2 === 0 && onSegment(a, d, b)) return true;
+        if (o3 === 0 && onSegment(c, a, d)) return true;
+        if (o4 === 0 && onSegment(c, b, d)) return true;
+        return false;
+      }
+
+      function segmentIntersectsRect(a, b, rect) {
+        if (pointInRect(a, rect) || pointInRect(b, rect)) return true;
+        const tl = { x: rect.left, y: rect.top };
+        const tr = { x: rect.right, y: rect.top };
+        const br = { x: rect.right, y: rect.bottom };
+        const bl = { x: rect.left, y: rect.bottom };
+        return segmentsIntersect(a, b, tl, tr) ||
+          segmentsIntersect(a, b, tr, br) ||
+          segmentsIntersect(a, b, br, bl) ||
+          segmentsIntersect(a, b, bl, tl);
+      }
+
+      function edgePoints(edge) {
+        return { a: getNodePoint(edge.from), b: getNodePoint(edge.to) };
+      }
+
+      function placementIssueForComponent(component) {
+        const rect = nodeBounds(component, 8);
+        if (state.components.some((other) => rectsOverlap(rect, nodeBounds(other, 8)))) {
+          return "コンポーネント重なりNG";
+        }
+        for (const edge of state.edges) {
+          const { a, b } = edgePoints(edge);
+          if (segmentIntersectsRect(a, b, rect)) return "NWと重なりNG";
+        }
+        return "";
+      }
+
+      function placementIssueForEdge(from, to) {
+        const a = getNodePoint(from.id);
+        const b = getNodePoint(to.id);
+        if (Math.hypot(a.x - b.x, a.y - b.y) < 32) return "近すぎます";
+
+        const blockers = [...state.components, ...state.users].filter((node) => node.id !== from.id && node.id !== to.id);
+        for (const node of blockers) {
+          if (segmentIntersectsRect(a, b, nodeBounds(node, 8))) return "重なりNG";
+        }
+
+        for (const edge of state.edges) {
+          const sharesEndpoint = edge.from === from.id || edge.to === from.id || edge.from === to.id || edge.to === to.id;
+          if (sharesEndpoint) continue;
+          const existing = edgePoints(edge);
+          if (segmentsIntersect(a, b, existing.a, existing.b)) return "NW交差NG";
+        }
+
+        return "";
       }
 
       function serviceFor(component) {
@@ -943,8 +1063,8 @@
       }
 
       function allowedOutputs(component) {
+        if (component.kind === "user") return 1;
         const service = serviceFor(component);
-        if (component.id === IGW_ID) return 99;
         return service.maxOut;
       }
 
@@ -953,7 +1073,7 @@
       }
 
       function canProcessPacket(component, packetType) {
-        if (!component || component.kind === "igw") return false;
+        if (!component || component.kind === "user") return false;
         const service = serviceFor(component);
         return service.behavior === "terminal" && service.handles.includes(packetType);
       }
@@ -981,16 +1101,10 @@
         const direct = candidates.filter((edge) => canProcessPacket(getNode(edge.to), packet.type));
         const pool = direct.length ? direct : candidates;
         const fromNode = getNode(fromId);
-        const fromService = fromNode && fromId !== IGW_ID ? serviceFor(fromNode) : null;
+        const fromService = fromNode && fromNode.kind !== "user" ? serviceFor(fromNode) : null;
 
         if (fromService && fromService.behavior === "leastLoaded") {
           return pool.slice().sort((a, b) => incomingLoad(a.to) - incomingLoad(b.to))[0];
-        }
-
-        if (fromId === IGW_ID) {
-          const edge = pool[state.igwRoundRobin % pool.length];
-          state.igwRoundRobin += 1;
-          return edge;
         }
 
         if (fromNode) {
@@ -1004,7 +1118,7 @@
 
       function incomingLoad(id) {
         const target = getNode(id);
-        if (!target || target.kind === "igw") return 0;
+        if (!target || target.kind === "user") return 0;
         let moving = 0;
         for (const packet of state.packets) {
           if (packet.mode === "edge" && packet.to === id) moving += 1;
@@ -1020,12 +1134,13 @@
 
         const marginTop = 86;
         const marginBottom = 86;
+        const size = componentSize();
         const component = {
           id: nextId("c"),
-          x: clamp(x, 78, view.w - 78),
+          x: clamp(x, 46 + size.w / 2, view.w - 46 - size.w / 2),
           y: clamp(y, marginTop, view.h - marginBottom),
-          w: 64,
-          h: 54,
+          w: size.w,
+          h: size.h,
           cores: [],
           queue: [],
           rr: 0,
@@ -1034,6 +1149,12 @@
           born: 0,
           reject: 0
         };
+        const issue = placementIssueForComponent(component);
+        if (issue) {
+          showToast(issue);
+          burst(component.x, component.y, colors.danger, 6, 0.5);
+          return null;
+        }
         state.components.push(component);
         burst(component.x, component.y, "#172033", 8, 0.75);
         updateHud();
@@ -1041,11 +1162,12 @@
       }
 
       function addCore(component, core) {
-        if (!component || component.kind === "igw") return;
+        if (!component || component.kind === "user") return;
         const unique = [...new Set(component.cores)];
         if (!component.cores.length) {
           component.cores.push(core);
           component.pulse = 1;
+          triggerCoreEffect(component, coreColors[core]);
           showToast(serviceFor(component).name);
           return;
         }
@@ -1053,6 +1175,7 @@
         if (unique.length === 1 && unique[0] === core && component.cores.length < 3) {
           component.cores.push(core);
           component.pulse = 1;
+          triggerCoreEffect(component, serviceFor(component).color);
           showToast(`${serviceFor(component).name} Lv${component.cores.length}`);
           return;
         }
@@ -1060,6 +1183,7 @@
         if (unique.length === 1 && unique[0] !== core && component.cores.length === 1) {
           component.cores.push(core);
           component.pulse = 1;
+          triggerCoreEffect(component, serviceFor(component).color);
           showToast(serviceFor(component).name);
           return;
         }
@@ -1070,7 +1194,10 @@
 
       function addEdge(from, to) {
         if (!from || !to || from.id === to.id) return;
-        if (from.id !== IGW_ID && to.id === IGW_ID) return;
+        if (to.kind === "user") {
+          showToast("ユーザへは接続不可");
+          return;
+        }
         if (state.edges.length >= MAX_NETWORKS) {
           showToast("NW上限");
           return;
@@ -1079,13 +1206,18 @@
           showToast("接続済み");
           return;
         }
-        if (from.id !== IGW_ID) {
-          const outLimit = allowedOutputs(from);
-          if (outputsFrom(from.id).length >= outLimit) {
-            from.reject = 0.7;
-            showToast("接続上限");
-            return;
-          }
+        const outLimit = allowedOutputs(from);
+        if (outputsFrom(from.id).length >= outLimit) {
+          from.reject = 0.7;
+          showToast("接続上限");
+          return;
+        }
+
+        const issue = placementIssueForEdge(from, to);
+        if (issue) {
+          from.reject = 0.7;
+          showToast(issue);
+          return;
         }
 
         const edge = {
@@ -1146,6 +1278,117 @@
         return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, r: 15 };
       }
 
+      function userSpot(edge) {
+        const size = userIconSize();
+        const side = edge || ["left", "right", "bottom"][Math.floor(rand(0, 3))];
+        if (side === "bottom") {
+          const x = rand(76, view.w - 120);
+          return { side, size, x, y: view.h + size * 0.65, targetX: x, targetY: view.h - size * 0.36, offX: x, offY: view.h + size * 0.8 };
+        }
+        if (side === "right") {
+          const y = rand(132, Math.max(180, view.h * 0.42));
+          return { side, size, x: view.w + size * 0.65, y, targetX: view.w - size * 0.36, targetY: y, offX: view.w + size * 0.8, offY: y };
+        }
+        const y = rand(132, view.h - 132);
+        return { side: "left", size, x: -size * 0.65, y, targetX: size * 0.36, targetY: y, offX: -size * 0.8, offY: y };
+      }
+
+      function spawnUser(edge, immediate = false) {
+        if (state.users.length >= 3 || view.w < 1 || view.h < 1) return null;
+        let spot = userSpot(edge);
+        for (let i = 0; i < 8; i += 1) {
+          const rect = { left: spot.targetX - spot.size / 2 - 8, right: spot.targetX + spot.size / 2 + 8, top: spot.targetY - spot.size / 2 - 8, bottom: spot.targetY + spot.size / 2 + 8 };
+          if (!state.users.some((user) => rectsOverlap(rect, nodeBounds(user, 10)))) break;
+          spot = userSpot(edge);
+        }
+        const persona = userPersonas[Math.floor(rand(0, userPersonas.length))];
+        const comment = persona.comments[Math.floor(rand(0, persona.comments.length))];
+        const user = {
+          id: nextId(SOURCE_PREFIX),
+          kind: "user",
+          persona,
+          side: spot.side,
+          x: immediate ? spot.targetX : spot.x,
+          y: immediate ? spot.targetY : spot.y,
+          targetX: spot.targetX,
+          targetY: spot.targetY,
+          offX: spot.offX,
+          offY: spot.offY,
+          w: spot.size,
+          h: spot.size,
+          rr: 0,
+          reject: 0,
+          phase: immediate ? "active" : "enter",
+          phaseT: immediate ? 1 : 0,
+          age: 0,
+          life: rand(18, 30),
+          spawnTimer: rand(0.8, 1.7),
+          spawnInterval: persona.interval * rand(0.9, 1.2),
+          comment,
+          commentTimer: rand(3, 6)
+        };
+        state.users.push(user);
+        burst(user.x, user.y, persona.color, 5, 0.45);
+        return user;
+      }
+
+      function removeUser(user) {
+        state.users = state.users.filter((item) => item.id !== user.id);
+        const removedEdges = state.edges.filter((edge) => edge.from === user.id || edge.to === user.id);
+        state.edges = state.edges.filter((edge) => edge.from !== user.id && edge.to !== user.id);
+        for (const packet of state.packets) {
+          if (packet.from === user.id || packet.to === user.id || removedEdges.some((edge) => edge.id === packet.edgeId)) {
+            packet.dead = true;
+          }
+        }
+        updateHud();
+      }
+
+      function updateUsers(dt) {
+        state.userSpawnTimer -= dt;
+        if (state.userSpawnTimer <= 0) {
+          spawnUser();
+          state.userSpawnTimer = rand(5.5, 9);
+        }
+
+        for (const user of [...state.users]) {
+          user.age += dt;
+          user.reject = Math.max(0, user.reject - dt * 2.2);
+          user.commentTimer -= dt;
+          if (user.commentTimer <= 0) {
+            user.comment = user.persona.comments[Math.floor(rand(0, user.persona.comments.length))];
+            user.commentTimer = rand(4, 7.5);
+          }
+
+          if (user.phase === "enter") {
+            user.phaseT = Math.min(1, user.phaseT + dt * 2.8);
+            const ease = 1 - Math.pow(1 - user.phaseT, 3);
+            user.x = user.offX + (user.targetX - user.offX) * ease;
+            user.y = user.offY + (user.targetY - user.offY) * ease + Math.sin(user.phaseT * Math.PI * 3) * 5;
+            if (user.phaseT >= 1) user.phase = "active";
+          } else if (user.phase === "leave") {
+            user.phaseT = Math.min(1, user.phaseT + dt * 2.1);
+            const ease = user.phaseT * user.phaseT;
+            user.x = user.targetX + (user.offX - user.targetX) * ease;
+            user.y = user.targetY + (user.offY - user.targetY) * ease + Math.sin(user.phaseT * Math.PI * 5) * 4;
+            if (user.phaseT >= 1) removeUser(user);
+          } else {
+            user.x = user.targetX;
+            user.y = user.targetY + Math.sin((state.elapsed + user.id.length) * 7.5) * 2.2;
+            user.spawnTimer -= dt;
+            if (user.spawnTimer <= 0) {
+              spawnTraffic(user);
+              user.spawnTimer += user.spawnInterval;
+            }
+            if (user.age >= user.life) {
+              user.phase = "leave";
+              user.phaseT = 0;
+              user.comment = "また来ます";
+            }
+          }
+        }
+      }
+
       function chooseTrafficType() {
         const ramp = clamp(state.elapsed / 110, 0, 1);
         const weighted = trafficTypes.map((type) => {
@@ -1163,15 +1406,16 @@
         return trafficTypes[0];
       }
 
-      function spawnTraffic() {
+      function spawnTraffic(source) {
+        if (!source) return;
         const type = chooseTrafficType();
         const packet = {
           id: nextId("p"),
           type: type.id,
           typeInfo: type,
           mode: "spawn",
-          x: igwNode().x,
-          y: igwNode().y,
+          x: source.x,
+          y: source.y,
           radius: type.id === "heavy" || type.id === "dataHeavy" ? 6 : 5,
           progress: 0,
           wait: 0,
@@ -1179,7 +1423,7 @@
           processingStarted: false,
           wander: { x: rand(-8, 8), y: rand(-6, 6), vx: rand(-12, 12), vy: rand(-12, 12) }
         };
-        routePacket(packet, IGW_ID);
+        routePacket(packet, source.id);
       }
 
       function routePacket(packet, fromId, requireProcessor = false) {
@@ -1242,6 +1486,7 @@
           component.jam = Math.max(0, component.jam - dt * 1.9);
           component.pulse = Math.max(0, component.pulse - dt * 1.8);
           component.reject = Math.max(0, component.reject - dt * 2.2);
+          component.flash = Math.max(0, (component.flash || 0) - dt * 1.6);
 
           const running = component.queue.filter((packet) => packet.processingStarted).length;
           let freeSlots = Math.max(0, service.concurrency - running);
@@ -1354,11 +1599,29 @@
         }
         state.particles = state.particles.filter((particle) => particle.life > 0);
 
+        for (const effect of state.effects) {
+          effect.life -= dt;
+        }
+        state.effects = state.effects.filter((effect) => effect.life > 0);
+
         for (const floater of state.floaters) {
           floater.life -= dt;
           floater.y -= 24 * dt;
         }
         state.floaters = state.floaters.filter((floater) => floater.life > 0);
+      }
+
+      function triggerCoreEffect(component, color) {
+        component.flash = 0.55;
+        state.effects.push({
+          x: component.x,
+          y: component.y,
+          color,
+          life: 0.72,
+          ttl: 0.72
+        });
+        burst(component.x, component.y, color, 18, 1.0);
+        burst(component.x, component.y, "#ffffff", 8, 0.5);
       }
 
       function burst(x, y, color, count, force) {
@@ -1443,13 +1706,9 @@
 
         state.elapsed += dt;
         state.screenShake = Math.max(0, state.screenShake - dt * 1.6);
-        state.spawnTimer -= dt;
         state.spawnInterval = clamp(1.48 - state.elapsed / 180 * 0.72, 0.68, 1.48);
-        if (state.spawnTimer <= 0) {
-          spawnTraffic();
-          state.spawnTimer += state.spawnInterval * rand(0.8, 1.15);
-        }
 
+        updateUsers(dt);
         updatePackets(dt);
         updateQueues(dt);
         updateParticles(dt);
@@ -1470,7 +1729,8 @@
 
         drawPlayBounds();
         drawEdges();
-        drawIgw();
+        drawUsers();
+        drawEffects();
         drawComponents();
         drawPackets();
         drawParticles();
@@ -1538,36 +1798,95 @@
         }
       }
 
-      function drawIgw() {
-        const node = igwNode();
+      function drawUsers() {
+        for (const user of state.users) {
+          const bob = user.phase === "active" ? Math.sin((state.elapsed + user.id.length) * 10) * 1.3 : 0;
+          ctx.save();
+          ctx.translate(user.x, user.y + bob);
+
+          if (user.reject > 0) {
+            ctx.shadowColor = colors.danger;
+            ctx.shadowBlur = 10;
+          }
+
+          ctx.fillStyle = "#fff";
+          ctx.strokeStyle = user.reject > 0 ? colors.danger : user.persona.color;
+          ctx.lineWidth = 2.6;
+          ctx.beginPath();
+          ctx.arc(0, 0, user.w / 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+
+          ctx.fillStyle = user.persona.color;
+          ctx.beginPath();
+          ctx.arc(-user.w * 0.15, -user.h * 0.08, 2.4, 0, Math.PI * 2);
+          ctx.arc(user.w * 0.15, -user.h * 0.08, 2.4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = user.persona.color;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(0, user.h * 0.05, user.w * 0.16, 0.1, Math.PI - 0.1);
+          ctx.stroke();
+
+          ctx.fillStyle = colors.ink;
+          ctx.font = `900 ${Math.max(8, Math.round(user.w * 0.22))}px ui-rounded, system-ui, sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(user.persona.name, 0, user.h * 0.37);
+          ctx.restore();
+
+          drawUserBubble(user);
+        }
+      }
+
+      function drawUserBubble(user) {
+        if (!user.comment || user.phase === "leave") return;
+        const text = user.comment;
         ctx.save();
-        ctx.translate(node.x, node.y);
-        roundRect(ctx, -node.w / 2, -node.h / 2, node.w, node.h, 8);
-        ctx.fillStyle = "#fff";
+        ctx.font = "900 12px ui-rounded, system-ui, sans-serif";
+        const w = Math.min(138, Math.max(58, ctx.measureText(text).width + 18));
+        const h = 30;
+        let x = user.x + (user.side === "right" ? -w - user.w * 0.38 : user.w * 0.38);
+        let y = user.y - user.h * 0.75;
+        if (user.side === "right") {
+          x = Math.min(x, view.w - w - 88);
+        }
+        if (user.side === "bottom") {
+          x = user.x - w / 2;
+          y = user.y - user.h - 34;
+        }
+        x = clamp(x, 8, view.w - w - 8);
+        y = clamp(y, 86, view.h - h - 80);
+        roundRect(ctx, x, y, w, h, 8);
+        ctx.fillStyle = "rgba(255,255,255,0.96)";
         ctx.fill();
         ctx.strokeStyle = colors.ink;
-        ctx.lineWidth = 2.5;
+        ctx.lineWidth = 2;
         ctx.stroke();
-
         ctx.fillStyle = colors.ink;
-        ctx.font = "900 13px ui-rounded, system-ui, sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText("IGW", 0, -16);
-
-        ctx.strokeStyle = "#f97316";
-        ctx.lineWidth = 2.3;
-        ctx.beginPath();
-        ctx.arc(0, 9, 13, -0.6, Math.PI * 1.32);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(-7, 9);
-        ctx.lineTo(9, 9);
-        ctx.moveTo(2, 3);
-        ctx.lineTo(9, 9);
-        ctx.lineTo(2, 15);
-        ctx.stroke();
+        ctx.fillText(text, x + w / 2, y + h / 2 + 0.5);
         ctx.restore();
+      }
+
+      function drawEffects() {
+        for (const effect of state.effects) {
+          const t = 1 - effect.life / effect.ttl;
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, effect.life / effect.ttl);
+          ctx.strokeStyle = effect.color;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(effect.x, effect.y, 22 + t * 28, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha *= 0.55;
+          ctx.beginPath();
+          ctx.arc(effect.x, effect.y, 8 + t * 18, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
       }
 
       function drawComponents() {
@@ -1589,7 +1908,7 @@
           }
 
           roundRect(ctx, -component.w / 2, -component.h / 2, component.w, component.h, 11);
-          ctx.fillStyle = "#fff";
+          ctx.fillStyle = component.flash > 0 ? mixHex("#ffffff", service.color, component.flash * 0.22) : "#fff";
           ctx.fill();
           ctx.lineWidth = reject ? 4 : 2.5;
           ctx.strokeStyle = overloaded && Math.sin(performance.now() * 0.018) > -0.1 ? colors.danger : service.color;
@@ -1946,7 +2265,7 @@
           return;
         }
 
-        if (action.from.kind !== "igw") {
+        if (action.from.kind !== "user") {
           if (state.selected && state.selected.type === "component" && state.selected.id === action.from.id) {
             deleteSelected();
           } else {
