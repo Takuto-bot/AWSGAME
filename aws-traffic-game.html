@@ -570,6 +570,12 @@
       const ROUND_SECONDS = 180;
       const NODE_RADIUS = 30;
       const SOURCE_PREFIX = "u";
+      const USER_STAGES = [
+        { time: 0, limit: 1, spawnMin: 12, spawnMax: 16, trafficScale: 2.2 },
+        { time: 40, limit: 2, spawnMin: 8, spawnMax: 11, trafficScale: 1.6 },
+        { time: 90, limit: 3, spawnMin: 5.5, spawnMax: 8, trafficScale: 1.15 },
+        { time: 135, limit: 4, spawnMin: 4, spawnMax: 6, trafficScale: 0.95 }
+      ];
 
       const colors = {
         ink: "#172033",
@@ -643,7 +649,8 @@
           effects: [],
           floaters: [],
           selected: null,
-          userSpawnTimer: 0.6,
+          userSpawnTimer: 10,
+          userLimitSeen: USER_STAGES[0].limit,
           paletteOpen: status === "playing",
           screenShake: 0,
           stats: {
@@ -659,7 +666,6 @@
           showStartScreen();
         } else {
           spawnUser("left", true);
-          spawnUser("bottom", true);
           overlay.classList.remove("visible");
           showToast("AWS Traffic Builder", 1200);
         }
@@ -1293,13 +1299,28 @@
         return { side: "left", size, x: -size * 0.65, y, targetX: size * 0.36, targetY: y, offX: -size * 0.8, offY: y };
       }
 
+      function userStage() {
+        let stage = USER_STAGES[0];
+        for (const candidate of USER_STAGES) {
+          if (state.elapsed >= candidate.time) stage = candidate;
+        }
+        return stage;
+      }
+
+      function nextUserDelay() {
+        const stage = userStage();
+        return rand(stage.spawnMin, stage.spawnMax);
+      }
+
       function spawnUser(edge, immediate = false) {
-        if (state.users.length >= 3 || view.w < 1 || view.h < 1) return null;
+        const stage = userStage();
+        if (state.users.length >= stage.limit || view.w < 1 || view.h < 1) return null;
         let spot = userSpot(edge);
-        for (let i = 0; i < 8; i += 1) {
+        const fallbackSides = ["left", "right", "bottom"];
+        for (let i = 0; i < 9; i += 1) {
           const rect = { left: spot.targetX - spot.size / 2 - 8, right: spot.targetX + spot.size / 2 + 8, top: spot.targetY - spot.size / 2 - 8, bottom: spot.targetY + spot.size / 2 + 8 };
           if (!state.users.some((user) => rectsOverlap(rect, nodeBounds(user, 10)))) break;
-          spot = userSpot(edge);
+          spot = userSpot(fallbackSides[i % fallbackSides.length]);
         }
         const persona = userPersonas[Math.floor(rand(0, userPersonas.length))];
         const comment = persona.comments[Math.floor(rand(0, persona.comments.length))];
@@ -1322,8 +1343,8 @@
           phaseT: immediate ? 1 : 0,
           age: 0,
           life: rand(18, 30),
-          spawnTimer: rand(0.8, 1.7),
-          spawnInterval: persona.interval * rand(0.9, 1.2),
+          spawnTimer: rand(0.8, 1.7) * stage.trafficScale,
+          spawnInterval: persona.interval * stage.trafficScale * rand(0.92, 1.18),
           comment,
           commentTimer: rand(3, 6)
         };
@@ -1346,9 +1367,16 @@
 
       function updateUsers(dt) {
         state.userSpawnTimer -= dt;
+        const stage = userStage();
+        if (stage.limit > state.userLimitSeen) {
+          state.userLimitSeen = stage.limit;
+          state.userSpawnTimer = Math.min(state.userSpawnTimer, 0.45);
+        }
         if (state.userSpawnTimer <= 0) {
-          spawnUser();
-          state.userSpawnTimer = rand(5.5, 9);
+          if (state.users.length < stage.limit) {
+            spawnUser();
+          }
+          state.userSpawnTimer = state.users.length < stage.limit ? rand(1.2, 2.8) : nextUserDelay();
         }
 
         for (const user of [...state.users]) {
